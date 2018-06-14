@@ -24,17 +24,23 @@ import Control.Exception
 
 main = do
   feed <- newChan :: IO (Chan Text)
+  history <- newMVar [] :: IO (MVar [Text])
   forkIO . forever $ do
     Text.getLine >>= writeChan feed
-  Warp.runEnv 5000 $ appMain feed
+  forkIO . forever $ do
+    ln <- readChan feed
+    t <- takeMVar history
+    let t' = ln:t
+    putMVar history t'
+  Warp.runEnv 5000 $ appMain history feed
 
-appMain :: Chan Text -> Application
-appMain feed rq respond = do
+appMain :: MVar [Text] -> Chan Text -> Application
+appMain history feed rq respond = do
   case pathInfo rq of
     ["ws"] ->
       websocketsOr
         defaultConnectionOptions
-        (appWS feed)
+        (appWS history feed)
         (error "not a WS request")
         rq
         respond
@@ -69,11 +75,16 @@ appMain feed rq respond = do
           fn
           Nothing
 
-appWS feedOrig pendingConn = do
+appWS history feedOrig pendingConn = do
   conn <- acceptRequest pendingConn
   forkPingThread conn 30
   putStrLn "Connected"
+  hist <- takeMVar history
   feed <- dupChan feedOrig
+  putMVar history hist
+
+  -- Send the last 100 lines of history
+  sendTextDatas conn (reverse $ take 100 hist)
   t <- forkIO . forever $ do
     ln <- readChan feed
     putStrLn $ "Send: " <> show ln
