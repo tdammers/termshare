@@ -1,5 +1,1 @@
-.stack-work/
-.cabal-sandbox/
-*~
-.*.sw[op]
-tags
+/session
