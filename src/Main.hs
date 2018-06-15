@@ -21,12 +21,31 @@ import qualified Data.ByteString.Lazy.UTF8 as LUTF8
 import Network.HTTP.Types
 import Data.Monoid
 import Control.Exception
+import Control.Concurrent.Async
+
+getString :: IO Text
+getString =
+  go ""
+  where
+    go txt = do
+      cEither <- race
+            (threadDelay 10000 >> return ())
+            getChar
+      case cEither of
+        Left () -> return txt
+        Right '\n' -> return $ Text.snoc txt '\n'
+        Right c -> go (Text.snoc txt c)
+
 
 main = do
   feed <- newChan :: IO (Chan Text)
   history <- newMVar [] :: IO (MVar [Text])
+
   forkIO . forever $ do
-    Text.getLine >>= writeChan feed
+    str <- getString
+    when
+      (str /= "")
+      (writeChan feed str)
   forkIO . forever $ do
     ln <- readChan feed
     t <- takeMVar history
@@ -62,7 +81,7 @@ appMain history feed rq respond = do
     serve contentType body =
       respond $
         responseLBS
-          (mkStatus 200 "OK") 
+          (mkStatus 200 "OK")
           [("Content-Type", contentType)]
           body
 
@@ -70,7 +89,7 @@ appMain history feed rq respond = do
     serveDyn contentType fn =
       respond $
         responseFile
-          (mkStatus 200 "OK") 
+          (mkStatus 200 "OK")
           [("Content-Type", contentType)]
           fn
           Nothing
@@ -83,14 +102,27 @@ appWS history feedOrig pendingConn = do
   feed <- dupChan feedOrig
   putMVar history hist
 
+  -- Set window size
+  geometryMay <- do
+    linesMay <- lookupEnv "LINES"
+    colsMay <- lookupEnv "COLUMNS"
+    pure $ do
+      cols <- colsMay
+      lines <- linesMay
+      pure $ cols ++ "x" ++ lines
+  case geometryMay of
+    Nothing ->
+      pure ()
+    Just geometry -> do
+      sendTextData conn . Text.pack $ 'G' : geometry
+
   -- Send the last 100 lines of history
-  sendTextDatas conn (reverse $ take 100 hist)
+  sendTextDatas conn (map ("=" <>) . reverse $ take 100 hist)
   t <- forkIO . forever $ do
     ln <- readChan feed
-    putStrLn $ "Send: " <> show ln
-    sendTextData conn ln
+    sendTextData conn ("=" <> ln)
   flip finally (disconnect t) . forever $ do
-    receive conn >> putStrLn "recv"
+    receive conn >> pure ()
   where
     disconnect :: ThreadId -> IO ()
     disconnect t = do
