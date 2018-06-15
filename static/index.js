@@ -6,10 +6,6 @@ document.onreadystatechange = function() {
         container.className = 'terminal';
         document.body.appendChild(container);
 
-        var stat = document.createElement('div');
-        stat.className = 'status';
-        document.body.appendChild(stat);
-
         hterm.defaultStorage = new lib.Storage.Memory();
         var t = new hterm.Terminal();
 
@@ -18,19 +14,23 @@ document.onreadystatechange = function() {
             t.io.push();
             console.log("Connecting to " + url);
             var ws = new WebSocket(url, ["text"]);
+            var lines = 25;
+            var columns = 80;
 
             t.io.onTerminalResize = function(w, h) {
                 console.log(w, h);
+                resetWindowSize();
+            }
+
+            resetWindowSize = function () {
+                t.io.print('\033[8;' + String(lines) + ';' + String(columns) + 't');
             }
 
             setWindowSize = function(w, h) {
-                t.io.print('\033[8;' + String(h) + ';' + String(w) + 't');
+                lines = h;
+                columns = w;
+                resetWindowSize();
             }
-
-            setInterval(function(){
-                    stat.textContent =
-                        t.screen_.getWidth() + "x" + t.screen_.getHeight();
-                }, 500);
 
             ws.onmessage = function (e) {
                 var cmd = e.data[0];

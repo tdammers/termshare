@@ -27,14 +27,29 @@ getString :: IO Text
 getString =
   go ""
   where
-    go txt = do
-      cEither <- race
-            (threadDelay 10000 >> return ())
-            getChar
-      case cEither of
-        Left () -> return txt
-        Right '\n' -> return $ Text.snoc txt '\n'
-        Right c -> go (Text.snoc txt c)
+    go "" = do
+      -- block until we've seen at least 1 character
+      c <- getChar
+      go $ Text.singleton c
+    go txt
+      | Text.length txt >= 800 =
+          -- when text gets too long, send and clear the queue
+          return txt
+      | otherwise = do
+          -- try to read a character, but give up after 10 ms
+          cEither <- race
+                (threadDelay 10000 >> return ())
+                getChar
+          case cEither of
+            Left () ->
+              -- Didn't receive anything within 10 ms: send and clear.
+              return txt
+            Right '\n' ->
+              -- Also send & clear after a newline.
+              return $ Text.snoc txt '\n'
+            Right c ->
+              -- Otherwise, append and keep going.
+              go (Text.snoc txt c)
 
 
 main = do
