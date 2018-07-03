@@ -23,7 +23,7 @@ script --flush --append session
 Then, in another terminal, tail that file into termshare:
 
 ```
-PORT=12345 tail -f session | termshare
+tail -f session | PORT=12345 termshare
 ```
 
 Now open `http://localhost:12345` in your browser. Anything that happens in the
